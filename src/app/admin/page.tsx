@@ -1,101 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import type { User } from "@/lib/auth-context";
 import {
   Shield,
   Users,
   Crown,
   MessageSquare,
   Wallet,
-  Lock,
-  Eye,
-  EyeOff,
-  BarChart3,
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-function AdminLogin({ onLogin }: { onLogin: () => void }) {
-  const { signInAdmin } = useAuth();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const success = signInAdmin(username, password);
-    if (success) onLogin();
-    else setError("Invalid credentials");
-  };
-
-  return (
-    <div className="min-h-screen py-8 px-6">
-      <div className="max-w-sm mx-auto mt-32">
-        <div className="bg-card rounded-2xl border border-border p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-primary" />
-            </div>
-            <h1 className="text-lg font-bold text-foreground">Admin Access</h1>
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => { setUsername(e.target.value); setError(""); }}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted text-foreground text-sm outline-none focus:border-primary"
-                autoComplete="username"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                  className="w-full px-4 py-2.5 pr-12 rounded-xl border border-border bg-muted text-foreground text-sm outline-none focus:border-primary"
-                  autoComplete="current-password"
-                />
-                <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            {error && (
-              <div className="flex items-center gap-2 text-danger text-sm">
-                <AlertCircle className="w-4 h-4" />{error}
-              </div>
-            )}
-            <button type="submit"
-              className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90">
-              Sign In
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminPage() {
-  const { isAdmin, getAllUsers } = useAuth();
-  const [loggedIn, setLoggedIn] = useState(isAdmin);
+  const { isAdmin, isLoggedIn, isReady, getAllUsers } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
 
-  if (!loggedIn) return <AdminLogin onLogin={() => setLoggedIn(true)} />;
+  useEffect(() => {
+    if (!isAdmin) return;
+    void getAllUsers().then(setUsers).catch(() => setLoadError("Could not load admin data."));
+  }, [isAdmin, getAllUsers]);
 
-  const users = getAllUsers();
   const totalUsers = users.length;
   const premiumUsers = users.filter((u) => u.tier === "premium").length;
   const totalChats = users.reduce((sum, u) => sum + u.chatCount, 0);
   const connectedBinance = users.filter((u) => u.binanceConnected).length;
   const selected = selectedUser ? users.find((u) => u.id === selectedUser) : null;
+
+  if (!isReady) return <div className="px-6 py-16 text-center text-muted-foreground">Loading account…</div>;
+  if (!isLoggedIn || !isAdmin) {
+    return (
+      <div className="mx-auto max-w-lg px-6 py-20 text-center">
+        <Shield className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
+        <h1 className="text-2xl font-bold text-foreground">Admin access required</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Sign in with an administrator account to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen py-8 px-6">
@@ -109,6 +53,8 @@ export default function AdminPage() {
             <p className="text-sm text-muted-foreground">Manage users and monitor platform activity</p>
           </div>
         </div>
+
+        {loadError && <div role="alert" className="mb-6 flex items-center gap-2 text-sm text-danger"><AlertCircle className="h-4 w-4" />{loadError}</div>}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

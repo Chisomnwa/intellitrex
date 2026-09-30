@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { hasSupabaseConfig } from "@/lib/supabase/config";
 
 const SUPPORTED_SYMBOLS = [
   "BTC", "ETH", "SOL", "XRP", "ARB", "DOT", "LINK", "KSM", "PYTH", "SUI",
@@ -32,6 +34,28 @@ async function fetchForecast(pair: string, baseUrl: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!hasSupabaseConfig()) {
+      return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
+    }
+
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Sign in to analyze a portfolio." }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("tier, portfolio_used")
+      .eq("id", user.id)
+      .single();
+    if (profileError || !profile) {
+      return NextResponse.json({ error: "Your account profile could not be loaded." }, { status: 503 });
+    }
+    if (profile.tier !== "premium" && profile.portfolio_used) {
+      return NextResponse.json({ error: "Your free portfolio analysis has already been used." }, { status: 403 });
+    }
+
     const { apiKey, apiSecret } = await req.json();
 
     if (!apiKey || !apiSecret) {
@@ -164,13 +188,23 @@ export async function POST(req: NextRequest) {
       }
     );
 
+    const snapshot = { holdings, insights, analyzedAt: Date.now() };
+    const { data: saved, error: saveError } = await supabase.rpc("save_portfolio_snapshot", { snapshot });
+    if (saveError) {
+      return NextResponse.json({ error: "Could not save the portfolio analysis." }, { status: 503 });
+    }
+    if (!saved) {
+      return NextResponse.json({ error: "Your free portfolio analysis has already been used." }, { status: 403 });
+    }
+
     return NextResponse.json({
       totalAssets: holdings.length,
       supportedAssets: holdings.filter((h: { supported: boolean }) => h.supported).length,
       holdings,
       insights,
+      analyzedAt: snapshot.analyzedAt,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Portfolio analysis failed" },
       { status: 500 }

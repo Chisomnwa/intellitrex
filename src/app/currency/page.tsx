@@ -186,12 +186,16 @@ export default function CurrencyPage() {
   }, []);
 
   useEffect(() => {
-    fetchPrices();
-    fetchForecasts();
+    const timer = window.setTimeout(() => {
+      void fetchPrices();
+      void fetchForecasts();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [fetchPrices, fetchForecasts]);
 
   useEffect(() => {
-    fetchFearGreedData();
+    const timer = window.setTimeout(() => void fetchFearGreedData(), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchFearGreedData]);
 
   const latestCandle = candles[candles.length - 1];

@@ -41,16 +41,7 @@ const PREMIUM_FEATURES = [
 ];
 
 function PremiumUpgradeCard() {
-  const { upgradeToPremium, premiumPrice } = useAuth();
-  const [processing, setProcessing] = useState(false);
-
-  const handleUpgrade = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      upgradeToPremium();
-      setProcessing(false);
-    }, 1500);
-  };
+  const { premiumPrice } = useAuth();
 
   return (
     <div className="bg-gradient-to-br from-primary/10 via-card to-yellow-500/5 rounded-2xl border border-primary/20 p-8">
@@ -64,7 +55,7 @@ function PremiumUpgradeCard() {
         </div>
       </div>
       <div className="mb-6">
-        <span className="text-4xl font-bold text-foreground">$99.99</span>
+        <span className="text-4xl font-bold text-foreground">{premiumPrice.replace("/month", "")}</span>
         <span className="text-muted-foreground">/month</span>
       </div>
       <ul className="space-y-3 mb-8">
@@ -76,28 +67,27 @@ function PremiumUpgradeCard() {
         ))}
       </ul>
       <button
-        onClick={handleUpgrade}
-        disabled={processing}
-        className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+        disabled
+        className="w-full py-3.5 rounded-xl bg-muted text-muted-foreground font-semibold cursor-not-allowed flex items-center justify-center gap-2"
       >
-        {processing ? (
-          <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
-        ) : (
-          <><CreditCard className="w-4 h-4" /> Subscribe to Premium</>
-        )}
+        <CreditCard className="w-4 h-4" /> Payments are not connected yet
       </button>
-      <p className="text-xs text-muted-foreground text-center mt-3">Cancel anytime. Powered by Stripe.</p>
+      <p className="text-xs text-muted-foreground text-center mt-3">Premium purchases are unavailable until a verified billing integration is configured.</p>
     </div>
   );
 }
 
 function SignInForm() {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, verifyEmailOtp, signInWithGoogle, isConfigured, isReady, authError } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) {
       setError("Please fill in all fields");
@@ -107,87 +97,165 @@ function SignInForm() {
       setError("Please enter a valid email");
       return;
     }
-    const success = signInWithEmail(name.trim(), email.trim());
-    if (!success) setError("Sign in failed. Please try again.");
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const message = await signInWithEmail(name.trim(), email.trim());
+    if (message) setError(message);
+    else setCodeSent(true);
+    setBusy(false);
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("Enter the six-digit code from your email.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const message = await verifyEmailOtp(email.trim(), code.trim());
+    if (message) setError("That code could not be verified. Check it and try again, or request a new code.");
+    setBusy(false);
+  };
+
+  const handleGoogle = async () => {
+    setBusy(true);
+    const message = await signInWithGoogle();
+    if (message) {
+      setError(message);
+      setBusy(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const message = await signInWithEmail(name.trim(), email.trim());
+    if (message) setError(message);
+    else setNotice("A new code has been sent to your email.");
+    setBusy(false);
   };
 
   return (
-    <div className="min-h-screen py-8 px-6">
-      <div className="max-w-md mx-auto mt-20">
-        <div className="bg-card rounded-2xl border border-border p-8 text-center">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Lock className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-2">Sign in to Intellitrex</h1>
-          <p className="text-muted-foreground text-sm mb-8">
-            Access your profile, chat history, portfolio analysis, and more.
-          </p>
-
-          {/* Google button (visual — in prod use NextAuth) */}
-          <button
-            onClick={() => {
-              document.getElementById("email-form")?.classList.remove("hidden");
-            }}
-            className="w-full py-3 rounded-xl border border-border bg-card hover:bg-muted transition-colors flex items-center justify-center gap-3 font-medium text-foreground mb-4"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Sign in with Google
-          </button>
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-            <div className="relative flex justify-center text-xs"><span className="bg-card px-2 text-muted-foreground">or continue with email</span></div>
-          </div>
-
-          <form id="email-form" onSubmit={handleSubmit} className="space-y-3 text-left">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => { setName(e.target.value); setError(""); }}
-                placeholder="Your full name"
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted text-foreground text-sm placeholder:text-muted-foreground outline-none focus:border-primary"
-              />
+    <main className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-primary/[0.06] via-background to-background px-4 py-10 sm:px-6 sm:py-16">
+      <div className="mx-auto grid min-h-[560px] max-w-5xl overflow-hidden rounded-3xl border border-border bg-card shadow-xl shadow-primary/5 md:grid-cols-[0.9fr_1.1fr]">
+        <section className="relative flex flex-col justify-between overflow-hidden bg-slate-950 p-7 text-white sm:p-10 md:p-12">
+          <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/30 blur-3xl" />
+          <div className="relative">
+            <div className="mb-12 flex items-center gap-3 md:mb-20">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary font-bold">I</div>
+              <span className="text-lg font-semibold tracking-tight">Intellitrex</span>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                placeholder="you@example.com"
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted text-foreground text-sm placeholder:text-muted-foreground outline-none focus:border-primary"
-              />
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-primary-foreground/70">Your trading workspace</p>
+            <h2 className="max-w-sm text-3xl font-bold leading-tight sm:text-4xl">Make more of every market moment.</h2>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-slate-300">
+              Keep your conversations, portfolio insights, and account preferences together in one place.
+            </p>
+          </div>
+          <div className="relative mt-12 rounded-2xl border border-white/10 bg-white/[0.06] p-5">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <Shield className="h-4 w-4 text-emerald-400" />
+              Verified account access
             </div>
-            {error && (
-              <div className="flex items-center gap-2 text-danger text-sm">
-                <AlertCircle className="w-4 h-4" />{error}
+            <p className="text-xs leading-5 text-slate-300">Sign in securely to keep your profile and workspace data available across sessions.</p>
+          </div>
+        </section>
+
+        <section className="flex items-center justify-center p-6 sm:p-10 md:p-12">
+          <div className="w-full max-w-md">
+            <div className="mb-8">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Lock className="h-6 w-6" />
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{codeSent ? "Check your email" : "Welcome back"}</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {codeSent ? `Enter the six-digit code sent to ${email}.` : "Sign in to access your Intellitrex profile."}
+              </p>
+            </div>
+
+            <div className="mb-6 flex gap-3 rounded-xl border border-primary/15 bg-primary/[0.05] p-4 text-sm text-foreground">
+              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <p>{isConfigured ? "Email codes verify that you own the address before an account session is created." : "Authentication setup is required. Follow docs/auth-setup.md to connect Supabase before signing in."}</p>
+            </div>
+
+            {!codeSent ? (
+              <>
+                <button type="button" onClick={handleGoogle} disabled={!isConfigured || !isReady || busy}
+                  className="mb-5 flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card py-3 font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="font-bold text-lg text-primary">G</span>}
+                  Continue with Google
+                </button>
+
+                <div className="relative mb-5 flex items-center justify-center text-xs text-muted-foreground">
+                  <span className="absolute inset-x-0 border-t border-border" />
+                  <span className="relative bg-card px-3">or continue with email</span>
+                </div>
+
+                <form id="email-form" onSubmit={handleSubmit} className="space-y-4 text-left">
+                  <div>
+                    <label htmlFor="profile-name" className="mb-1.5 block text-sm font-medium text-foreground">Name</label>
+                    <input id="profile-name" type="text" value={name}
+                      onChange={(e) => { setName(e.target.value); setError(""); }} placeholder="Your full name"
+                      autoComplete="name" disabled={!isConfigured || busy}
+                      className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:opacity-50" />
+                  </div>
+                  <div>
+                    <label htmlFor="profile-email" className="mb-1.5 block text-sm font-medium text-foreground">Email</label>
+                    <input id="profile-email" type="email" value={email}
+                      onChange={(e) => { setEmail(e.target.value); setError(""); }} placeholder="you@example.com"
+                      autoComplete="email" disabled={!isConfigured || busy}
+                      className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 disabled:opacity-50" />
+                  </div>
+                  <button type="submit" disabled={!isConfigured || !isReady || busy}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+                    {busy && <Loader2 className="h-4 w-4 animate-spin" />} Send one-time code
+                  </button>
+                </form>
+              </>
+            ) : (
+              <form onSubmit={handleVerify} className="space-y-4 text-left">
+                <div>
+                  <label htmlFor="email-code" className="mb-1.5 block text-sm font-medium text-foreground">Email code</label>
+                  <input id="email-code" type="text" inputMode="numeric" autoComplete="one-time-code"
+                    pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setError(""); }}
+                    placeholder="000000" disabled={busy} autoFocus
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-center font-mono text-xl tracking-[0.5em] text-foreground outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                </div>
+                <button type="submit" disabled={busy}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 disabled:opacity-50">
+                  {busy && <Loader2 className="h-4 w-4 animate-spin" />} Verify and continue
+                </button>
+                <button type="button" disabled={busy} onClick={() => { setCodeSent(false); setCode(""); setError(""); }}
+                  className="w-full py-2 text-sm font-medium text-primary hover:underline disabled:opacity-50">Use a different email</button>
+                <button type="button" disabled={busy} onClick={() => void handleResendCode()}
+                  className="w-full py-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50">Resend code</button>
+              </form>
+            )}
+
+            {notice && <p role="status" className="mt-4 text-center text-sm text-success">{notice}</p>}
+            {(error || authError) && (
+              <div role="alert" className="mt-4 flex items-center gap-2 text-sm text-danger">
+                <AlertCircle className="h-4 w-4 shrink-0" />{error || authError}
               </div>
             )}
-            <button type="submit" className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity">
-              Sign In
-            </button>
-          </form>
 
-          <p className="text-xs text-muted-foreground mt-6">
-            Free tier includes 50 AI chatbot responses + 1 portfolio analysis. Upgrade for unlimited.
+          <p className="mt-6 border-t border-border pt-5 text-xs leading-5 text-muted-foreground">
+            Free tier includes 50 AI chatbot responses and 1 portfolio analysis. Upgrade for unlimited access.
           </p>
-        </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 
 export default function ProfilePage() {
   const {
-    user, isLoggedIn, isPremium, chatCount, chatLimit,
-    getChatSessions, setBinanceConnected, unlinkBinance,
+    user, isLoggedIn, isPremium, isReady, chatCount, chatLimit,
+    getChatSessions, unlinkBinance,
     savePortfolioSnapshot, deleteAccount, premiumPrice,
   } = useAuth();
 
@@ -223,11 +291,10 @@ export default function ProfilePage() {
         setLoading(false);
         return;
       }
-      setBinanceConnected(true, apiKey);
       savePortfolioSnapshot({
         holdings: data.holdings,
         insights: data.insights,
-        analyzedAt: Date.now(),
+        analyzedAt: data.analyzedAt,
       });
     } catch {
       setError("Connection failed. Please check your credentials.");
@@ -235,6 +302,24 @@ export default function ProfilePage() {
     setLoading(false);
   };
 
+  const handleDeleteAccount = async () => {
+    const deleteError = await deleteAccount();
+    if (deleteError) {
+      setError(deleteError);
+      setConfirmDelete(false);
+    }
+  };
+
+  const handleUnlinkBinance = async () => {
+    try {
+      await unlinkBinance();
+      setError("");
+    } catch {
+      setError("Could not unlink the Binance account. Please try again.");
+    }
+  };
+
+  if (!isReady) return <div className="px-6 py-16 text-center text-muted-foreground">Loading account…</div>;
   if (!isLoggedIn) return <SignInForm />;
 
   return (
@@ -351,7 +436,7 @@ export default function ProfilePage() {
         {/* Portfolio */}
         {activeTab === "portfolio" && (
           <>
-            {!user?.binanceConnected && !portfolioSnapshot ? (
+            {!user?.binanceConnected && !portfolioSnapshot && (!user?.portfolioUsed || isPremium) ? (
               /* Connect form */
               <div className="bg-card rounded-2xl border border-border p-8 max-w-lg mx-auto">
                 <div className="flex items-center gap-3 mb-6">
@@ -414,7 +499,7 @@ export default function ProfilePage() {
                         Analyzed {new Date(portfolioSnapshot.analyzedAt).toLocaleDateString()}
                       </span>
                       {user?.binanceConnected && (
-                        <button onClick={unlinkBinance} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-danger transition-colors">
+                        <button onClick={() => void handleUnlinkBinance()} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-danger transition-colors">
                           <Unlink className="w-3 h-3" /> Unlink
                         </button>
                       )}
@@ -510,7 +595,12 @@ export default function ProfilePage() {
                   </table>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="bg-card rounded-2xl border border-border p-6 text-center">
+                <h2 className="text-lg font-semibold text-foreground">Free analysis already used</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Your free portfolio analysis has been used. Upgrade to Premium for another analysis.</p>
+              </div>
+            )}
           </>
         )}
 
@@ -544,12 +634,14 @@ export default function ProfilePage() {
               <div className="bg-card rounded-2xl border border-border p-6">
                 <h3 className="text-lg font-semibold text-foreground mb-2">Binance Connection</h3>
                 <p className="text-sm text-muted-foreground mb-4">Your Binance account is connected for portfolio analysis.</p>
-                <button onClick={unlinkBinance}
+                <button onClick={() => void handleUnlinkBinance()}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-danger hover:border-danger transition-colors">
                   <Unlink className="w-4 h-4" /> Unlink Binance Account
                 </button>
               </div>
             )}
+
+            {error && <div role="alert" className="flex items-center gap-2 text-sm text-danger"><AlertCircle className="h-4 w-4" />{error}</div>}
 
             <div className="bg-card rounded-2xl border border-danger/20 p-6">
               <h3 className="text-lg font-semibold text-danger mb-2">Danger Zone</h3>
@@ -563,7 +655,7 @@ export default function ProfilePage() {
                 </button>
               ) : (
                 <div className="flex items-center gap-3">
-                  <button onClick={deleteAccount}
+                  <button onClick={() => void handleDeleteAccount()}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-danger text-white text-sm font-medium hover:opacity-90">
                     <Trash2 className="w-4 h-4" /> Yes, Delete Everything
                   </button>

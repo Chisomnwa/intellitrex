@@ -47,8 +47,8 @@ export default function ConsultancyPage() {
 
 function ConsultancyContent() {
   const {
-    isLoggedIn, isPremium, canChat, chatCount, chatLimit,
-    incrementChatCount, saveChatSession, loadChatSession, user,
+    isLoggedIn, isPremium, canChat, chatCount, chatLimit, isReady,
+    saveChatSession, loadChatSession, refreshProfile, user,
   } = useAuth();
 
   const searchParams = useSearchParams();
@@ -65,7 +65,8 @@ function ConsultancyContent() {
 
   // Load resumed session
   useEffect(() => {
-    if (resumeSessionId && !initialized) {
+    if (resumeSessionId && !initialized && isReady) {
+      const timer = window.setTimeout(() => {
       const session = loadChatSession(resumeSessionId);
       if (session) {
         setSessionId(session.id);
@@ -73,15 +74,17 @@ function ConsultancyContent() {
         setMessages(session.messages.map((m) => ({ role: m.role, content: m.content })));
       }
       setInitialized(true);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
-  }, [resumeSessionId, loadChatSession, initialized]);
+  }, [resumeSessionId, loadChatSession, initialized, isReady]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const saveCurrentSession = useCallback(
-    (msgs: Message[]) => {
+    async (msgs: Message[]) => {
       if (!isLoggedIn || msgs.length === 0) return;
       const session: ChatSession = {
         id: sessionId,
@@ -90,7 +93,7 @@ function ConsultancyContent() {
         mode,
         createdAt: Date.now(),
       };
-      saveChatSession(session);
+      await saveChatSession(session);
     },
     [isLoggedIn, sessionId, mode, saveChatSession]
   );
@@ -157,8 +160,10 @@ function ConsultancyContent() {
       };
       const updatedMessages = [...newMessages, assistantMsg];
       setMessages(updatedMessages);
-      incrementChatCount();
-      saveCurrentSession(updatedMessages);
+      if (res.ok) {
+        await refreshProfile();
+        await saveCurrentSession(updatedMessages);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
